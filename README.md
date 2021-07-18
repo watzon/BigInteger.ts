@@ -6,7 +6,7 @@ This library aims to remedy that.
 ## Usage
 
 ```sh
-import { bigInt } from 'https://deno.land/x/biginteger@0.1.0/mod.ts';
+import { bigInt } from 'https://deno.land/x/biginteger@v0.1.0/mod.ts';
 
 const a = bigInt("93326215443944152681699238856266700490715968264381621468592963895217599993229915")
 const b = bigInt("21468592963895217599993229915608941463976156518286253697920827214685929638952175")
