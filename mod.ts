@@ -280,7 +280,7 @@ export class BigInteger {
     return BigInteger.millerRabinTest(n, a);
   }
 
-  public isProbablePrime(iterations: number, rng: () => number) {
+  public isProbablePrime(iterations: number, rng?: () => number) {
     const isPrime = BigInteger.isBasicPrime(this);
     if (isPrime !== undefined) return isPrime;
     const n = this.abs();
@@ -468,7 +468,7 @@ export class BigInteger {
     return a.divide(BigInteger.gcd(a, b)).multiply(b);
   }
 
-  public static randBetween(a: BigNumber, b: BigNumber, rng: () => number) {
+  public static randBetween(a: BigNumber, b: BigNumber, rng?: () => number) {
     a = BigInteger.from(a);
     b = BigInteger.from(b);
     const usedRNG = rng || Math.random;
