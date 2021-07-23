@@ -6,29 +6,13 @@ const BASE = 1e7,
   LOBMASK_I = 1 << 30,
   LOBMASK_BI = ((BASE & -BASE) * (BASE & -BASE)) | LOBMASK_I;
 
-interface PowersOfTwo {
-  [key: number]: number | undefined;
-  values: number[];
-  length: number;
-}
-
 // This keeps the values from being generated until they're needed
-const powersOfTwo = new Proxy(
-  { values: [] as number[] },
-  {
-    get: function (target, name) {
-      if (name === "values") return target.values;
-      if (name === "length") return target.values.length;
-      if (target.values.length === 0) {
-        target.values = [2];
-        while (2 * target.values[target.values.length - 1] <= BASE)
-          target.values.push(2 * target.values[target.values.length - 1]);
-      }
-      return target.values[Number(name)];
-    },
-  }
-) as PowersOfTwo;
-const powers2Length = powersOfTwo.values.length;
+const powersOfTwo = (() => {
+  const powersOfTwo = [1];
+  while (2 * powersOfTwo[powersOfTwo.length - 1] <= BASE) powersOfTwo.push(2 * powersOfTwo[powersOfTwo.length - 1]);
+  return powersOfTwo;
+})();
+const powers2Length = powersOfTwo.length;
 const highestPower2: number = powersOfTwo[powers2Length - 1]!;
 
 export type BigNumber = string | number | bigint | BigInteger;
@@ -40,42 +24,52 @@ export class BigInteger {
   public static one = new BigInteger(1);
   public static minusOne = new BigInteger(-1);
 
-  constructor(value: BigNumber) {
-    this.raw = BigInteger.parse(value);
+  constructor(value?: BigNumber, radix?: number, alphabet?: string, caseSensitive?: boolean) {
+    if (typeof value === "undefined") this.raw = BigInt(0);
+    else if (typeof radix !== "undefined") {
+      if (+radix === 10 && !alphabet) {
+        this.raw = BigInteger.parseValue(value);  
+      } else {
+          this.raw = BigInteger.parseBase(value, radix, alphabet, caseSensitive);
+        }
+      } else {
+        this.raw = BigInteger.parseValue(value);
+      }
   }
 
-  public static from(value: BigNumber) {
-    return new BigInteger(value);
+  private static parseValue(value?: BigNumber) {
+    if (value instanceof BigInteger) return value.raw;
+    switch (typeof value) {
+      case "number":
+      case "bigint":
+        return BigInt(value as number);
+      case "string":
+        return BigInteger.parseStringValue(value as string);
+      default:
+        throw `${typeof value} cannot be converted to a BigInteger`;
+    }
+  }
+
+  public static from(value?: BigNumber, radix?: number, alphabet?: string, caseSensitive?: boolean) {
+    return new BigInteger(value, radix, alphabet, caseSensitive);
   }
 
   public static fromArray(digits: number[], base: number, isNegative: boolean) {
     return BigInteger.parseBaseFromArray(
-      digits.map(BigInteger.from),
+      digits.map(v => BigInteger.from(v, base)),
       BigInteger.from(base || 10),
       isNegative
     );
   }
 
-  private static parse(value: BigNumber) {
-    const type = typeof value;
-    switch (type) {
-      case "number":
-      case "string":
-      case "bigint":
-        return BigInt(value as number);
-      default:
-        return (value as BigInteger).raw;
-    }
-  }
-
   public add(other: BigNumber) {
-    return new BigInteger(this.raw + BigInteger.parse(other));
+    return new BigInteger(this.raw + BigInteger.from(other).raw);
   }
 
   public plus = this.add;
 
   public subtract(other: BigNumber) {
-    return new BigInteger(this.raw - BigInteger.parse(other));
+    return new BigInteger(this.raw - BigInteger.from(other).raw);
   }
 
   public minus = this.subtract;
@@ -89,7 +83,7 @@ export class BigInteger {
   }
 
   public multiply(other: BigNumber) {
-    return new BigInteger(this.raw * BigInteger.parse(other));
+    return new BigInteger(this.raw * BigInteger.from(other).raw);
   }
 
   public times = this.multiply;
@@ -104,7 +98,7 @@ export class BigInteger {
 
   public divmod(other: BigNumber) {
     const x = this.raw;
-    const y = BigInteger.parse(other);
+    const y = BigInteger.from(other).raw;
     const [quotient, remainder] = [
       new BigInteger(x / y),
       new BigInteger(x % y),
@@ -113,13 +107,13 @@ export class BigInteger {
   }
 
   public divide(other: BigNumber) {
-    return new BigInteger(this.raw / BigInteger.parse(other));
+    return new BigInteger(this.raw / BigInteger.from(other).raw);
   }
 
   public over = this.divide;
 
   public mod(other: BigNumber) {
-    return new BigInteger(this.raw % BigInteger.parse(other));
+    return new BigInteger(this.raw % BigInteger.from(other).raw);
   }
 
   public remainder = this.mod;
@@ -153,10 +147,10 @@ export class BigInteger {
   }
 
   public modPow(exp: BigNumber, mod: BigNumber) {
-    exp = new BigInteger(BigInteger.parse(exp));
-    mod = new BigInteger(BigInteger.parse(mod));
+    exp = new BigInteger(BigInteger.from(exp));
+    mod = new BigInteger(BigInteger.from(mod));
     if (mod.isZero()) throw new Error("Cannot take modPow with modulus 0");
-    var r = new BigInteger(1),
+    let r = new BigInteger(1),
       base = this.mod(mod);
     if (exp.isNegative()) {
       exp = exp.multiply(new BigInteger(-1));
@@ -172,8 +166,8 @@ export class BigInteger {
   }
 
   public compareAbs(other: BigNumber) {
-    var a = this.raw;
-    var b = BigInteger.parse(other);
+    let a = this.raw;
+    let b = BigInteger.from(other).raw;
     a = a >= 0 ? a : -a;
     b = b >= 0 ? b : -b;
     return a === b ? 0 : a > b ? 1 : -1;
@@ -186,8 +180,8 @@ export class BigInteger {
     if (other === -Infinity) {
       return 1;
     }
-    var a = this.raw;
-    var b = BigInteger.parse(other);
+    let a = this.raw;
+    let b = BigInteger.from(other).raw;
     return a === b ? 0 : a > b ? 1 : -1;
   }
 
@@ -262,17 +256,17 @@ export class BigInteger {
   }
 
   public isPrime(strict?: boolean) {
-    var isPrime = BigInteger.isBasicPrime(this);
+    let isPrime = BigInteger.isBasicPrime(this);
     if (isPrime !== undefined) return isPrime;
-    var n = this.abs();
-    var bits = n.bitLength();
+    let n = this.abs();
+    let bits = n.bitLength();
     if (bits.lesserOrEquals(64))
       return BigInteger.millerRabinTest(
         n,
         [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]
       );
-    var logN = Math.log(2) * bits.toJSNumber();
-    var t = Math.ceil(strict === true ? 2 * Math.pow(logN, 2) : logN);
+    let logN = Math.log(2) * bits.toJSNumber();
+    let t = Math.ceil(strict === true ? 2 * Math.pow(logN, 2) : logN);
     const a: BigNumber[] = [];
     for (let i = 0; i < t; i++) {
       a.push(new BigInteger(i + 2));
@@ -293,7 +287,7 @@ export class BigInteger {
   }
 
   public modInv(n: BigNumber) {
-    var t = BigInteger.zero,
+    let t = BigInteger.zero,
       newT = BigInteger.one,
       r = new BigInteger(n),
       newR = this.abs(),
@@ -335,15 +329,7 @@ export class BigInteger {
     if (!(Math.abs(n) <= BASE)) {
       throw new Error(String(n) + " is too large for shifting.");
     }
-    if (n < 0) return this.shiftRight(-n);
-    // deno-lint-ignore no-this-alias
-    let result: BigInteger = this;
-    if (result.isZero()) return result;
-    while (n >= powers2Length) {
-      result = result.multiply(highestPower2);
-      n -= powers2Length - 1;
-    }
-    return result.multiply(powersOfTwo[n]!);
+    return BigInteger.from(this.raw << BigInteger.from(amount).raw);
   }
 
   public shiftRight(amount: BigNumber) {
@@ -352,22 +338,7 @@ export class BigInteger {
     if (!(Math.abs(n) <= BASE)) {
       throw new Error(String(n) + " is too large for shifting.");
     }
-    if (n < 0) return this.shiftLeft(-n);
-    // deno-lint-ignore no-this-alias
-    let result: BigInteger = this;
-    while (n >= powers2Length) {
-      if (result.isZero() || (result.isNegative() && result.isUnit()))
-        return result;
-      remQuo = this.divmod(highestPower2);
-      result = remQuo.remainder.isNegative()
-        ? remQuo.quotient.prev()
-        : remQuo.quotient;
-      n -= powers2Length - 1;
-    }
-    remQuo = this.divmod(powersOfTwo[n]!);
-    return remQuo.remainder.isNegative()
-      ? remQuo.quotient.prev()
-      : remQuo.quotient;
+    return BigInteger.from(this.raw >> BigInteger.from(amount).raw);
   }
 
   public not() {
@@ -436,7 +407,7 @@ export class BigInteger {
     if (a.equals(b)) return a;
     if (a.isZero()) return b;
     if (b.isZero()) return a;
-    var c = BigInteger.one,
+    let c = BigInteger.one,
       d,
       t;
     while (a.isEven() && b.isEven()) {
@@ -488,10 +459,10 @@ export class BigInteger {
   }
 
   private static parseBase(
-    text: string,
+    text: any,
     base: number,
-    alphabet: string,
-    caseSensitive: boolean
+    alphabet?: string,
+    caseSensitive?: boolean
   ) {
     alphabet = alphabet || DEFAULT_ALPHABET;
     text = String(text);
@@ -548,7 +519,7 @@ export class BigInteger {
       val = val.add(digits[i]!.times(pow));
       pow = pow.times(base);
     }
-    return isNegative ? val.negate() : val;
+    return isNegative ? val.negate().raw : val.raw;
   }
 
   private static stringify(digit: number, alphabet?: string) {
@@ -624,7 +595,7 @@ export class BigInteger {
   }
 
   private static toBaseString(n: BigInteger, base: number, alphabet?: string) {
-    var arr = BigInteger.toBase(n, base);
+    let arr = BigInteger.toBase(n, base);
     return (
       (arr.isNegative ? "-" : "") +
       arr.value
@@ -674,7 +645,7 @@ export class BigInteger {
       yDivMod = null;
     const result = [];
     while (!xRem.isZero() || !yRem.isZero()) {
-      xDivMod = x.divmod(highestPower2);
+      xDivMod = xRem.divmod(highestPower2);
       xDigit = xDivMod.remainder.toJSNumber();
       if (xSign) {
         xDigit = highestPower2 - 1 - xDigit; // two's complement for negative numbers
@@ -690,12 +661,9 @@ export class BigInteger {
       yRem = yDivMod.quotient;
       result.push(fn(xDigit, yDigit));
     }
-    let sum =
-      fn(xSign ? 1 : 0, ySign ? 1 : 0) !== 0
-        ? BigInteger.from(-1)
-        : BigInteger.from(0);
+    let sum = fn(xSign ? 1 : 0, ySign ? 1 : 0) !== 0 ? bigInt(-1) : bigInt(0);
     for (let i = result.length - 1; i >= 0; i -= 1) {
-      sum = sum.multiply(highestPower2).add(BigInteger.from(result[i]));
+      sum = sum.multiply(highestPower2).add(bigInt(result[i]));
     }
     return sum;
   }
@@ -734,6 +702,46 @@ export class BigInteger {
     if (n > 0) return Math.floor(n);
     return Math.ceil(n);
   }
+
+  private static parseStringValue(v: string) {
+    if (BigInteger.isPrecise(+v)) {
+      let x = +v;
+      if (x === BigInteger.truncate(x)) return BigInt(x);
+      throw new Error("Invalid integer: " + v);
+    }
+    let sign = v[0] === "-";
+    if (sign) v = v.slice(1);
+    let split = v.split(/e/i);
+    if (split.length > 2)
+      throw new Error("Invalid integer: " + split.join("e"));
+    if (split.length === 2) {
+      let _exp = split[1];
+      if (_exp[0] === "+") _exp = _exp.slice(1);
+      let exp = +_exp;
+      if (exp !== BigInteger.truncate(exp) || !BigInteger.isPrecise(exp))
+        throw new Error(
+          "Invalid integer: " + exp + " is not a valid exponent."
+        );
+      let text = split[0];
+      let decimalPlace = text.indexOf(".");
+      if (decimalPlace >= 0) {
+        exp -= text.length - decimalPlace - 1;
+        text = text.slice(0, decimalPlace) + text.slice(decimalPlace + 1);
+      }
+      if (exp < 0)
+        throw new Error("Cannot include negative exponent part for integers");
+      text += new Array(exp + 1).join("0");
+      v = text;
+    }
+    let isValid = /^([0-9][0-9]*)$/.test(v);
+    if (!isValid) throw new Error("Invalid integer: " + v);
+    return BigInt(sign ? "-" + v : v);
+  }
+
+  private static isPrecise(n: number) {
+    return -MAX_INT < n && n < MAX_INT;
+  }
 }
 
-export const bigInt = (value: BigNumber) => new BigInteger(value);
+export const bigInt = (value?: BigNumber, radix?: number, alphabet?: string, caseSensitive?: boolean) =>
+  new BigInteger(value, radix, alphabet, caseSensitive);

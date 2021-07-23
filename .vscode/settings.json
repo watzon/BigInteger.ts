@@ -1,8 +1,6 @@
 {
     "deno.enable": true,
-    "deno.lint": true,
-    "deno.unstable": true,
     "editor.defaultFormatter": "denoland.vscode-deno",
-    "editor.formatOnPaste": true,
-    "editor.formatOnSave": true
+    "editor.formatOnPaste": false,
+    "editor.formatOnSave": false
 }
